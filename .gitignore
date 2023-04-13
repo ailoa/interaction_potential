@@ -1,0 +1,13 @@
+syntax: glob
+
+old
+obsolete
+
+TAGS
+.tags
+*tags
+*~
+*\#
+
+*.pyc
+*.pdf
