@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 
 class RadiallySymmetricPotential(ABC):
     def __init__(self, sigma, epsdivk, precalc=True, hardcore=False, rc=np.inf, shift=False):
-        self.sigma = self.sigmaeff = sigma
-        self.epsdivk = self.epsdivkeff = epsdivk
-        self.hardcore = hardcore
-        self.rc = rc       # truncation position
+        self.sigma = self.sigmaeff = sigma       # (m)
+        self.epsdivk = self.epsdivkeff = epsdivk # (K)
+        self.hardcore = hardcore # whether the potential is infinite for r<sigma
+        self.rc = rc       # truncation position (m)
         self.shift = shift # whether to shift at truncation
         if rc<np.inf:
             self.cut_shift(rc, shift=shift)
@@ -29,12 +29,11 @@ class RadiallySymmetricPotential(ABC):
 
     def cut_shift(self, rc, shift=True):
         full_pot = self.calc_pot_divk
-        self.shift_correction = full_pot(rc)
-        if abs(self.shift_correction) < np.finfo(float).eps:
+        pot_at_rc = full_pot(rc)
+        if abs(pot_at_rc) < np.finfo(float).eps:
             # potential is already zero, no more is needed
             return
-        if self.shift:
-            self.shift_correction = full_pot(rc)
+        self.shift_correction = pot_at_rc if shift else 0.0
 
         def calc_pot_divk_cutshift(r):
             """Calculate potential
@@ -52,7 +51,7 @@ class RadiallySymmetricPotential(ABC):
         self.sigmaeff = self._calc_sigmaeff()
 
     def _calc_rmin_and_epseff(self):
-        """Calculate effective sigma and location of minimum
+        """Calculate effective epsilon and location of minimum
         Args:
             T (K, optional)
         Returns:
@@ -76,16 +75,15 @@ class RadiallySymmetricPotential(ABC):
         sol = SciOpt.root(self.calc_pot_divk, x0=self.sigma)
         return float(sol.x)
 
-    def calc_alpha_x(self, x=1):
+    def calc_alpha(self, x=1):
         """Calculates effective alpha"""
-        sigma = self.sigmaeff
-        epsdivk = self.epsdivkeff
-        def integrand(w):
-            r = w*sigma
-            return -w**2 * self.calc_pot_divk(r)/epsdivk
+        def integrand(r):
+            return -r**2 * self.calc_pot_divk(r)
 
-        alphaeff, error = SciInt.quad(func=integrand, a=x, b=self.rc,
-                                      epsabs=1e-10, limit=10000)
+        normalization = self.epsdivkeff*self.sigmaeff**3
+        integral, error = SciInt.quad(func=integrand, a=x*self.sigmaeff, b=self.rc,
+                                      epsabs=1e-8*normalization, limit=10000)
+        alphaeff = integral/normalization
         assert alphaeff>0
         assert error/alphaeff<1e-4, error
         return alphaeff
@@ -96,9 +94,7 @@ class RadiallySymmetricPotential(ABC):
             T [K]
         Returns:
             B2 [m^3].'''
-        sigma = self.sigmaeff
-        def integrand_B2(w):
-            r = sigma*w
+        def integrand_B2(r):
             Phi = self.calc_pot_divk(r)
             return (np.exp(-Phi/T)-1)*r**2
 
@@ -112,7 +108,7 @@ class RadiallySymmetricPotential(ABC):
         integral, error = SciInt.quad(func=integrand_B2, a=lowlim, b=self.rc,
             epsabs=1e-100, limit=10000)
         assert error/integral<1e-4, error
-        B2 = -2*np.pi*integral*self.sigma + hs_contrib
+        B2 = -2*np.pi*integral*self.sigma**3 + hs_contrib
         return B2
 
     def calc_stickyness_tau(self, T):
