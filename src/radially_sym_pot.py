@@ -460,6 +460,29 @@ class LJSpline(RadiallySymmetricPotential):
         else:
             return 0.0
 
+
+class Wang2020Potential(RadiallySymmetricPotential):
+    """The LJ-like potential by Wang et al. 2020 (10.1039/C9CP05445F)"""
+    def __init__(self, sigma=1, epsdivk=1):
+        """Set potential parameters
+        Args:
+        sigma - diameter (m)
+        epsdivk - potential depth (K)
+        """
+        self.rc = 2
+        super().__init__(sigma, epsdivk, rc=self.rc)
+
+    def calc_pot_divk(self, r):
+        """Calculate potential
+        """
+        if r <= self.rc:
+            rc, sig = self.rc, self.sigma
+            rcdivsig2 = (rc/sig)**2
+            alpha = 2*rcdivsig2 * (3 /(2*rcdivsig2 - 2))**3
+            rm = rc*(3/(1 + 2*rcdivsig2))**0.5
+            return self.epsdivk*alpha * ((sig/r)**2-1) * ((rc/r)**2-1)**2
+        else:
+            return 0.0
     
 if __name__=="__main__":
 

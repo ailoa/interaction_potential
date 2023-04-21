@@ -25,6 +25,7 @@ class PotentialData(object):
     def plot_csp(self):
         namelist = self.D.keys()
         print (f"{'NAME':15s}, {'TC':>10s}, {'R-EST':>10s}, {'R-ERR %':>10s}, {'ALPHA-EST':>10s} {'ALPHA-ERR %':>10s}")
+        alphamax = 0
         for name in namelist:
             tclist = self.D[name]['Tc']
             potlist = self.D[name]['pot']
@@ -46,6 +47,8 @@ class PotentialData(object):
                 # print (0.26 + 2.1*Rvec[-1])
                 # print (pot.calc_stickyness_tau(tc), Rvec[-1])
                 # print ()
+                
+            alphamax = max(alphamax, max(alphavec))
             plt.figure("alpha")
             plt.scatter(alphavec, tclist, label=name)
             # plt.figure("R")
@@ -67,7 +70,7 @@ class PotentialData(object):
         
         # Ramrattan's alpha hypothesis
         plt.figure("alpha")
-        alphavec = np.linspace(0,2.5)
+        alphavec = np.linspace(0,np.ceil(alphamax*2)/2)
         plt.plot(alphavec, 0.254+1.173*alphavec, ls='-', zorder=-10)
         plt.xlabel("alpha"); plt.ylabel("Tc*")
         
@@ -76,18 +79,24 @@ class PotentialData(object):
 
 # Register potential data
 PD = PotentialData()
-PD.register_potentials("SquareWell",
-                       [SquareWell(lam=lam) for lam in (1.25, 1.375, 1.5, 1.75, 2)],
-                       [0.78, 1.01, 1.218, 1.79, 2.61])
-PD.register_potentials("Yukawa",
-                        [Yukawa(lam=lam) for lam in (1.8,3,4,7)],
-                        [1.170,0.715,0.576,0.412])
+
+# Uncomment to include hard-core potentials
+# PD.register_potentials("SquareWell",
+#                        [SquareWell(lam=lam) for lam in (1.25, 1.375, 1.5, 1.75, 2)],
+#                        [0.78, 1.01, 1.218, 1.79, 2.61])
+# PD.register_potentials("Yukawa",
+#                         [Yukawa(lam=lam) for lam in (1.8,3,4,7)],
+#                         [1.170,0.715,0.576,0.412])
+
 PD.register_potentials("Mie",
                        [MieFH(lama=n, lamr=2*n) for n in (6,7,8,9,11,12,18)],
                        [1.316,0.997,0.831,0.730,0.603,0.560,0.425])
 PD.register_potentials("LJSpline",
                        [LJSpline()],
                        [0.885])
+PD.register_potentials("Wang2020",
+                       [Wang2020Potential()],
+                       [1.04])
 ljts_list = [MieFH(rc=2.5, shift=True), MieFH(rc=2**(7/6), shift=True)]
 PD.register_potentials("LJCutShift",
                        ljts_list,
