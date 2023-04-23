@@ -484,6 +484,26 @@ class Wang2020Potential(RadiallySymmetricPotential):
         else:
             return 0.0
     
+
+class InversePowerPotential(RadiallySymmetricPotential):
+    """Inverse power potential, i.e. a (soft) Sutherland potential."""
+    def __init__(self, sigma=1, epsdivk=1, lam=12):
+        # The Mie potential
+        self.lam = lam
+        super().__init__(sigma, epsdivk)
+
+    def calc_pot_divk(self, r):
+        if r<=1e-10*self.sigma:
+            return np.inf
+        else:
+            return self.epsdivk*(self.sigma/r)**self.lam
+
+    def precalc(self,):
+        self.rmin = np.inf
+        self.epsdivkeff = 0.0
+        self.sigmaeff = 0.0
+        return
+
 if __name__=="__main__":
 
     M = MieQuadrupolar()
