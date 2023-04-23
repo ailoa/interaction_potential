@@ -4,6 +4,7 @@ import numpy as np
 import scipy.integrate as SciInt
 import scipy.optimize as SciOpt
 import matplotlib.pyplot as plt
+from hardsphere import *
 
 class RadiallySymmetricPotential(ABC):
     def __init__(self, sigma, epsdivk, precalc=True, hardcore=False, rc=np.inf, shift=False):
@@ -115,7 +116,7 @@ class RadiallySymmetricPotential(ABC):
         '''B2star = 1-1/(4*tau), see paragraph following Eq. 6 in Noro-Frenkel paper.'''
         B2star = self.calc_B2(T)/(2*np.pi*self.calc_dhs_rep(T)**3 /3)
         #B2star = self.calc_B2(T)/(2*np.pi*self.sigma**3 /3)
-        tau = (4*(1-B2star))**(-1)  
+        tau = (4*(1-B2star))**(-1)
         return tau
 
     def effective_R(self, T):
@@ -158,7 +159,75 @@ class RadiallySymmetricPotential(ABC):
         dhs = integral*sigma
         return dhs
 
-    
+    def calc_dhs_wca(self, T, rho):
+        '''Calculate Weeks-Chandler-Andersen hard-sphere diameter [m].'''
+        if self.hardcore:
+            return self.sigma
+        sigma = self.sigmaeff
+        epsdivk = self.epsdivkeff
+        rmin = self.rmin
+        def resid(d):
+            if d>rmin:
+                return np.inf
+            if d<=0:
+                return -np.inf
+            def integrand_left(r):
+                Phi = np.exp(-(self.calc_pot_divk(r)+epsdivk)/T)
+                return Phi*y_hs_desousa_amotz(r, rho, d)
+
+            def integrand_right(r):
+                Phi_m1 = np.exp(-(self.calc_pot_divk(r)+epsdivk)/T) - 1
+                return Phi_m1*y_hs_desousa_amotz(r, rho, d)
+
+            integral_left, error = SciInt.quad(func=integrand_left, a=1e-10*sigma, b=d,
+                                               epsabs=sigma*1e-10, limit=10000)
+            integral_right, error = SciInt.quad(func=integrand_right, a=d, b=rmin,
+                                                epsabs=sigma*1e-10, limit=10000)
+
+            return integral_left + integral_right
+        sol = SciOpt.root(resid, x0=sigma)
+        return sol.x[0]
+
+
+
+    def calc_dhs_wca_lado(self, T, rho):
+        '''Calculate Weeks-Chandler-Andersen hard-sphere diameter [m].'''
+        if self.hardcore:
+            return self.sigma
+        sigma = self.sigmaeff
+        epsdivk = self.epsdivkeff
+        rmin = self.rmin
+        def resid(d):
+            if d<0.1*sigma:
+                return np.inf
+
+            def integrand_left(r):
+                Phi = np.exp(-(self.calc_pot_divk(r)+epsdivk)/T)
+                return np.exp(-(self.calc_pot_divk(r)+epsdivk)/T)*dy_hs_desousa_amotz_ddhs(r, rho, d)
+
+            def integrand_right(r):
+                Phi_m1 = np.exp(-(self.calc_pot_divk(r)+epsdivk)/T) - 1
+                return Phi_m1*dy_hs_desousa_amotz_ddhs(r, rho, d)
+
+            integral_left, error = SciInt.quad(func=integrand_left, a=1e-10*sigma, b=d,
+                                               epsabs=sigma*1e-10, limit=10000)
+            integral_right, error = SciInt.quad(func=integrand_right, a=d, b=rmin,
+                                                epsabs=sigma*1e-10, limit=10000)
+
+            return integral_left + integral_right
+        sol = SciOpt.root(resid, x0=sigma)
+        return sol.x[0]
+
+
+    def calc_dhs_BFC(self, T):
+        '''Calculate hard-sphere diameter according to Boltzmann-Factor-Criterion [m].'''
+        if self.hardcore:
+            return self.sigma
+        def resid(r):
+            return self.calc_pot_divk(r)/T-1
+        sol = SciOpt.root(resid, x0=self.sigma)
+        return sol.x[0]
+
     def plot(self, n=500, rmax=4, filename=None, T=None, kwargs=None, show=True):
         """Plot dimensionless potential as a function of separation
         Arguments
@@ -187,7 +256,7 @@ class SutherlandSum(RadiallySymmetricPotential):
         self.lam = lam
         self.nt = len(C)
         super().__init__(**kwargs)
-        
+
     def calc_pot_divk(self, r):
         """Calculate potential
         Args:
@@ -225,7 +294,7 @@ class Mie(SutherlandSum):
         self.lamr = lamr
         denom = lamr - lama
         exponent = lama/denom
-        self.Cmie = lamr/denom*(lamr/lama)**exponent        
+        self.Cmie = lamr/denom*(lamr/lama)**exponent
         super().__init__(sigma, epsdivk, C=[self.Cmie, -self.Cmie], lam=[lamr, lama], **kwargs)
 
 
@@ -248,13 +317,13 @@ class MieQuadrupolar(RadiallySymmetricPotential):
 
         # Number of Sutherland terms
         self.nt = 3
-        
+
         # Distance exponents
         self.lam = [lamr, lama, 10]
 
         # Beta exponents
         self.bexp = [0,0,1]
-        
+
         # Adimensional prefactor to eps/(kB*T) term
         Q_SI = Q*DEBYE*1e-10
         Cq = - 1.4*(Q_SI*Q_SI/(epsdivk*KB*sigma**5))**2
@@ -353,7 +422,7 @@ class MieFH(RadiallySymmetricPotential):
         print ()
 
         print ("- coefficients (-)")
-        print (self.C, -self.C, end=' ')    
+        print (self.C, -self.C, end=' ')
         if self.fh>=1:
             print (self.C*self.D*self.Q1r/self.sigma**2/self.epsdivk, -self.C*self.D*self.Q1a/self.sigma**2/self.epsdivk, end=' ')
         if self.fh==2:
@@ -367,11 +436,11 @@ class MieFH(RadiallySymmetricPotential):
         if self.fh==2:
             print (2, 2, end=' ')
         print ()
-        
+
     def set_deboer(self, Lambda):
         '''Re-compute the Feynman--Hibbs D parameter from the de Boer parameter'''
         self.D = self.epsdivk*(Lambda*self.sigma)**2/(48*KB*np.pi**2)
-        
+
 
 class Yukawa(RadiallySymmetricPotential):
     """The Yukawa potential."""
@@ -387,7 +456,7 @@ class Yukawa(RadiallySymmetricPotential):
         assert lam>0
         self.lam = lam
         super().__init__(sigma, epsdivk, hardcore=True, precalc=False)
- 
+
     def calc_pot_divk(self, r):
         """Calculate potential
         """
@@ -483,7 +552,6 @@ class Wang2020Potential(RadiallySymmetricPotential):
             return self.epsdivk*alpha * ((sig/r)**2-1) * ((rc/r)**2-1)**2
         else:
             return 0.0
-    
 
 class InversePowerPotential(RadiallySymmetricPotential):
     """Inverse power potential, i.e. a (soft) Sutherland potential."""
@@ -508,6 +576,6 @@ if __name__=="__main__":
 
     M = MieQuadrupolar()
     print (M.C)
-    
+
     # Display Sutherland-Sum representation for Mie-FH1 representation of H2
     M = MieFH.init_H2_MieFH1(T=20)
