@@ -95,9 +95,16 @@ class RadiallySymmetricPotential(ABC):
             T [K]
         Returns:
             B2 [m^3].'''
+
+        
+        def fmayer(r,T):
+            if r<0.3:
+                return -1
+            else:
+                return np.exp(-self.calc_pot_divk(r)/T)-1
+
         def integrand_B2(r):
-            Phi = self.calc_pot_divk(r)
-            return (np.exp(-Phi/T)-1)*r**2
+            return fmayer(r,T)*r**2
 
         # Integration using the substitution w = r/sigma -> dr = sigma*dw
         lowlim = 0
@@ -108,10 +115,59 @@ class RadiallySymmetricPotential(ABC):
 
         integral, error = SciInt.quad(func=integrand_B2, a=lowlim, b=self.rc,
             epsabs=1e-100, limit=10000)
-        assert error/integral<1e-4, error
-        B2 = -2*np.pi*integral*self.sigma**3 + hs_contrib
+        assert abs(error/integral)<1e-4, (error, integral)
+        B2 = -2*np.pi*integral + hs_contrib
         return B2
 
+    def calc_B3(self, T):
+        '''Calculate third virial coefficient B3.
+        Input:
+            T [K]
+        Returns:
+            B2 [m^3].'''
+        import math
+        if self.hardcore:
+            raise NotImplementedError
+
+        def fmayer(r,T):
+            if r<0.3:
+                return -1
+            else:
+                return np.exp(-self.calc_pot_divk(r)/T)-1
+
+        prefac = -8*np.pi**2/3.0
+        def integrand_B3(h, x, r1):
+            h2 = h*h
+            x2 = x*x
+            xmr2 = (x-r1)*(x-r1)
+            r2 = math.sqrt(x2+h2)
+            r12 = math.sqrt(xmr2+h2)
+            integrand = fmayer(r1,T)*fmayer(r2,T)*fmayer(r12,T)*(r1*r1*h)
+            return integrand
+
+        lowlim = 0
+
+        rc = self.rc
+        rc2 = rc*rc
+
+        r1min, r1max = 0, rc
+
+        xmin = lambda r1: r1-rc
+        xmax = lambda r1: rc
+
+        hmin = 0
+        hmax = lambda r1,x: math.sqrt( rc2 - max(abs(x),abs(x-r1))**2 )
+        
+        integral, error = SciInt.tplquad(func=integrand_B3,
+                                         a=r1min,   b=r1max,
+                                         gfun=xmin, hfun=xmax,
+                                         qfun=hmin, rfun=hmax)
+        print ("error, integral, ratio", error, integral, error/integral)
+        #assert abs(error/integral)<1e-3, (error, integral)
+        B3 = prefac*integral
+        return B3
+
+    
     def calc_stickyness_tau(self, T):
         '''B2star = 1-1/(4*tau), see paragraph following Eq. 6 in Noro-Frenkel paper.'''
         B2star = self.calc_B2(T)/(2*np.pi*self.calc_dhs_rep(T)**3 /3)
@@ -191,7 +247,7 @@ class RadiallySymmetricPotential(ABC):
 
 
     def calc_dhs_wca_lado(self, T, rho):
-        '''Calculate Weeks-Chandler-Andersen hard-sphere diameter [m].'''
+        '''Calculate Weeks-Chandler-Andersen hard-sphere diameter following Lado [m].'''
         if self.hardcore:
             return self.sigma
         sigma = self.sigmaeff
@@ -250,7 +306,7 @@ class RadiallySymmetricPotential(ABC):
 
 
 class SutherlandSum(RadiallySymmetricPotential):
-    """."""
+    """A minimal implementation of the Sutherland sum potential family."""
     def __init__(self, sigma=1, epsdivk=1, C=(4,-4), lam=(12,6), **kwargs):
         self.C = C
         self.lam = lam
@@ -301,7 +357,7 @@ class Mie(SutherlandSum):
 class MieQuadrupolar(RadiallySymmetricPotential):
     """The Mie potential with spherically averaged quadrupole moment."""
     def __init__(self, sigma=3.785e-10, epsdivk=253, lama=6, lamr=12, Q=-4.3, **kwargs):
-        """Set Mie-FH potential parameters (Mie-FH1 parameters for H2 from Aasen2019, doi 10.1063/1.5111364)
+        """Set parameters for a spherical molecule with a dipole or quadrupole moment
         Args:
         sigma - Position of zero potential (m)
         epsdivk - Potential depth (K)
@@ -521,7 +577,7 @@ class LJSpline(RadiallySymmetricPotential):
     def calc_pot_divk(self, r):
         """Calculate potential
         """
-        if r <= self.RS:
+        if 0 <= r <= self.RS:
             six = (self.sigma/r)**6
             return 4*self.epsdivk*six*(six-1)
         elif r <= self.rc:
