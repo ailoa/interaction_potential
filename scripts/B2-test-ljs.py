@@ -45,7 +45,7 @@ def calc_real_rho(rhoStar, sigma):
 
 # States to examine
 z = [1.0]
-Tvec = [0.65, 0.70, 0.75, 0.8, 0.85]
+Tvec = [0.55, 0.60, 0.65]
 rhovec = np.linspace(1e-6, 0.333*0.5, 10)
 rhorealvec = calc_real_rho(rhovec, sigma)
 
@@ -54,20 +54,18 @@ from radially_sym_pot import LJSpline
 pot = LJSpline()
 
 # Calculate B2 and B3 for all temperatures
-# B2dict, B3dict = {}, {}
-# for t in Tvec:
-#     B2_eos, B3_eos = ljs.virial_coeffcients(t*eps, n=[1.0])
-#     B2dict[t] = pot.calc_B2(t)
-#     B3dict[t] = pot.calc_B3(t)
-B2dict = {0.65: -7.416496183392034, 0.7: -6.34324042988608, 0.75:
-          -5.484536222798156, 0.8: -4.783514885149114, 0.85: -4.201456718097707}
-B3dict = {0.65: -4.519543534392317, 0.7: -0.07311807802446374, 0.75:
-          2.072207939706353, 0.8: 3.0670265143300237, 0.85: 3.4721746620620215}
-
+B2dict = {0.65: -7.416496183392034, 0.7: -6.34324042988608, 0.75: -5.484536222798156, 0.8: -4.783514885149114, 0.85: -4.201456718097707, 0.55: -10.6044916636537, 0.6: -8.790942475384952}
+B3dict = {0.65: -4.519543534392317, 0.7: -0.07311807802446374, 0.75: 2.072207939706353, 0.8: 3.0670265143300237, 0.85: 3.4721746620620215, 0.55: -33.55494429737849, 0.6: -13.757102776313362}
+for t in Tvec:
+    if not t in B2dict:
+        B2dict[t] = pot.calc_B2(t)
+    if not t in B3dict:
+        B3dict[t] = pot.calc_B3(t)
+        
 for t in Tvec:
     B2_eos, B3_eos = ljs.virial_coeffcients(t*eps, n=[1.0])
-    #B2dict[t] = B2_eos/(NA*sigma**3)
-    #B3dict[t] = B3_eos/(NA*sigma**3)**2
+    B2dict[t] = B2_eos/(NA*sigma**3)
+    B3dict[t] = B3_eos/(NA*sigma**3)**2
     print (t)
     print (f"B2_eos({t}) {B2_eos/(NA*sigma**3)}")
     print (f"B2_pot({t}) {B2dict[t]}")
@@ -89,15 +87,16 @@ print (B3dict[T]*rhovec**2 /(B2dict[T]*rhovec) * 100)
 # Compare second virial expansion with simulation data and LJs EoS
 M = np.genfromtxt('../data/IsothermsMetaStable_MD_ElongatedBox.txt')
 T_sim, rho_sim, P_sim = M[:,0], M[:,1], M[:,2]
+rvec = np.linspace(0,0.3, 1000)
 for T in Tvec:
     idcs = T_sim==T
     plt.scatter(rho_sim[idcs], P_sim[idcs], zorder=10, s=30)
     pvec_uv = [calc_reduced_P(ljs.pressure_tv(T*eps, 1/rho, z)[0], eps, sigma) for rho in rhorealvec]
-    pvec_b2 = [P_B2(T=T, rho=rho) for rho in rhovec]
-    pvec_b3 = [P_B3(T=T, rho=rho) for rho in rhovec]
     plt.plot(rhovec, pvec_uv, ls='-', color='orange')
-    plt.plot(rhovec, pvec_b2, ls='--', color='blue')
-    plt.plot(rhovec, pvec_b3, ls='--', color='navy')
+    pvec_b2 = [P_B2(T=T, rho=rho) for rho in rvec]
+    pvec_b3 = [P_B3(T=T, rho=rho) for rho in rvec]
+    plt.plot(rvec, pvec_b2, ls='--', color='blue')
+    plt.plot(rvec, pvec_b3, ls='--', color='navy')
     Psatreal = ljs.dew_pressure(T*eps, z)[0]
     vreal = ljs.specific_volume(T*eps, Psatreal, z, phase=ljs.VAPPH)[0]
     plt.scatter([calc_reduced_rho(1/vreal, sigma)], [calc_reduced_P(Psatreal, eps, sigma)], s=20, marker='d', color='cyan', zorder=100)
