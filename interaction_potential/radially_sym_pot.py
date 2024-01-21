@@ -1,6 +1,8 @@
+
 """Module implementing radially symmetric potentials."""
 from abc import ABC, abstractmethod
 import numpy as np
+import num_dual as nd
 import scipy.integrate as SciInt
 import scipy.optimize as SciOpt
 import matplotlib.pyplot as plt
@@ -27,6 +29,16 @@ class RadiallySymmetricPotential(ABC):
             potential value (K)
         """
         pass
+
+    def calc_pot_derivative(self, r):
+        """Calculate d/dr pot_divk
+        Args:
+            r: separation (m)
+        Returns:
+            dudr: derivative value (K/m)
+        """
+        (_, dudr) = nd.first_derivative(self.calc_pot_divk, r)
+        return dudr
 
     def cut_shift(self, rc, shift=True):
         full_pot = self.calc_pot_divk
@@ -76,6 +88,19 @@ class RadiallySymmetricPotential(ABC):
         sol = SciOpt.root(self.calc_pot_divk, x0=self.sigma)
         return float(sol.x)
 
+    def _calc_zero_entropic_force(self, T):
+        """Calculate the largest position where the entropic force (d/dr)*exp(-beta*u(r))*r**2 is zero.
+        Args:
+            T: temperature [eps]
+        Returns:
+            sigma_s [sigma]
+        """
+        def fun(r):
+            return np.exp(-self.calc_pot_divk(r)/T)*r*(2-self.calc_pot_divk(r)/T)
+        sol1 = SciOpt.root(self.calc_pot_divk, x0=self.sigma)
+        sol2 = SciOpt.root(self.calc_pot_divk, x0=self.sigma*1.6)
+        return float(sol1.x), float(sol2.x)
+
     def calc_alpha(self, x=1):
         """Calculates effective alpha"""
         def integrand(r):
@@ -89,12 +114,13 @@ class RadiallySymmetricPotential(ABC):
         assert error/alphaeff<1e-4, error
         return alphaeff
 
-    def calc_B2(self, T):
+    def calc_B2(self, T, lowlim=0):
         '''Calculate second virial coefficient B2.
         Input:
-            T [K]
+            T: temperature [K]
+            lowlim: lower integration limit [sigma]
         Returns:
-            B2 [m^3].'''
+            B2 [sigma^3].'''
 
         
         def fmayer(r,T):
@@ -107,7 +133,6 @@ class RadiallySymmetricPotential(ABC):
             return fmayer(r,T)*r**2
 
         # Integration using the substitution w = r/sigma -> dr = sigma*dw
-        lowlim = 0
         hs_contrib = 0
         if self.hardcore:
             hs_contrib = 2*np.pi/3 * self.sigma**3
@@ -124,7 +149,7 @@ class RadiallySymmetricPotential(ABC):
         Input:
             T [K]
         Returns:
-            B2 [m^3].'''
+            B3 [m^6].'''
         import math
         if self.hardcore:
             raise NotImplementedError
@@ -144,7 +169,7 @@ class RadiallySymmetricPotential(ABC):
             r12 = math.sqrt(xmr2+h2)
             integrand = fmayer(r1,T)*fmayer(r2,T)*fmayer(r12,T)*(r1*r1*h)
             return integrand
-
+ 
         lowlim = 0
 
         rc = self.rc
@@ -163,13 +188,13 @@ class RadiallySymmetricPotential(ABC):
                                          gfun=xmin, hfun=xmax,
                                          qfun=hmin, rfun=hmax)
         print ("error, integral, ratio", error, integral, error/integral)
-        #assert abs(error/integral)<1e-3, (error, integral)
+        assert abs(error/(abs(integral)+1e-4))<1e-3, (error, integral)
         B3 = prefac*integral
         return B3
 
     def calc_stickyness_tau(self, T):
         '''B2star = 1-1/(4*tau), see paragraph following Eq. 6 in Noro-Frenkel paper.'''
-        B2star = self.calc_B2(T)/(2*np.pi*self.calc_dhs_rep(T)**3 /3)
+        B2star = self.calc_B2(T)/(2*np.pi*calc_dhs_rep(self, T)**3 /3)
         #B2star = self.calc_B2(T)/(2*np.pi*self.sigma**3 /3)
         tau = (4*(1-B2star))**(-1)
         return tau
@@ -208,7 +233,7 @@ class SutherlandSum(RadiallySymmetricPotential):
         self.C = C
         self.lam = lam
         self.nt = len(C)
-        super().__init__(**kwargs)
+        super().__init__(sigma=sigma, epsdivk=epsdivk, **kwargs)
 
     def calc_pot_divk(self, r):
         """Calculate potential
@@ -527,8 +552,40 @@ class InversePowerPotential(RadiallySymmetricPotential):
 
 if __name__=="__main__":
 
-    M = MieQuadrupolar()
-    print (M.C)
+    # M = MieQuadrupolar()
+    # print (M.C)
 
-    # Display Sutherland-Sum representation for Mie-FH1 representation of H2
-    M = MieFH.init_H2_MieFH1(T=20)
+    # # Display Sutherland-Sum representation for Mie-FH1 representation of H2
+    # M = MieFH.init_H2_MieFH1(T=20)
+
+    LJ = Mie(sigma=1, epsdivk=1)
+    # print (LJ.calc_B2(0.75))
+
+    LJ.plot(show=False)
+    rvec = np.linspace(0.8, 4, 500)*LJ.sigma
+    dudrvec  = [LJ.calc_pot_derivative(r) for r in rvec]
+    #T = 1.31
+    #probvec = [np.exp(-LJ.calc_pot_divk(r)/T)*r*r for r in rvec]
+
+    plt.plot(rvec, dudrvec)
+    plt.ylim(-1,5)
+    plt.show()
+    # def plot(self, n=500, rmax=4, filename=None, T=None, kwargs=None, show=True):
+    #     """Plot dimensionless potential as a function of separation
+    #     Arguments
+    #         n: Number of points plotted
+    #         filename: Save plot to filename
+    #     """
+    #     kwargs = {} if kwargs is None else kwargs
+    #     rvec = np.linspace(0.9, rmax, n)*self.sigma
+    #     u = [self.calc_pot_divk(r)/self.epsdivk for r in rvec]
+    #     plt.plot(rvec/self.sigma, u, **kwargs)
+    #     plt.xlabel(r"$r/\sigma$")
+    #     plt.ylabel(r"$u/\epsilon$")
+    #     plt.xlim(xmax=rmax)
+    #     plt.ylim(ymin=-1, ymax=1)
+    #     plt.grid()
+    #     if filename is not None:
+    #         plt.savefig(filename)
+    #     if show:
+    #         plt.show()

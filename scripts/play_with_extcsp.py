@@ -1,7 +1,7 @@
 import sys; sys.path.append('../src/')
 import matplotlib.pyplot as plt
 import numpy as np
-from radially_sym_pot import *
+from interaction_potential.radially_sym_pot import *
 import scipy.optimize as SciOpt
 
 # dhs_rep = sigma -> tau=0.0986 is optimal
@@ -80,7 +80,7 @@ class PotentialData(object):
 # Register potential data
 PD = PotentialData()
 
-# Uncomment to include hard-core potentials
+# # Uncomment to include hard-core potentials
 # PD.register_potentials("SquareWell",
 #                        [SquareWell(lam=lam) for lam in (1.25, 1.375, 1.5, 1.75, 2)],
 #                        [0.78, 1.01, 1.218, 1.79, 2.61])
